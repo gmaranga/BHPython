@@ -1,11 +1,20 @@
 import socket
 import os
 import struct
+import threading
+import time
+# easy_install netaddr
+from netaddr import IPNetwork, IPAddress
 from ctypes import *
 
 # host to listen on
 host = "0.0.0.0"
 
+# subnet to target
+subnet = "0.0.0.0/24"
+
+#magic string we'll check ICMP response for
+magic_message = "PYTHONSCANNER!"
 
 # our ip header
 class IP(Structure):
@@ -24,6 +33,7 @@ class IP(Structure):
     ]
 # The __new__ method of the IP class simply takes in a raw buffer (in this
 # case, what we receive on the network) and forms the structure from it.
+
     def __new__(self, socket_buffer=None):
         return self.from_buffer_copy(socket_buffer)
 
@@ -45,6 +55,7 @@ class IP(Structure):
             self.protocol = str(self.protocol_num)
 
 
+
 class ICMP(Structure):
 
     _fields = [
@@ -61,7 +72,6 @@ class ICMP(Structure):
     def __init__(self, socket_buffer):
         pass
 
-
 if os.name == "nt":
     socket_protocol = socket.IPPROTO_IP
 else:
@@ -74,6 +84,22 @@ sniffer.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
 
 if os.name == "nt":
     sniffer.ioctl(socket.SIO_RCVALL, socket.RCVALL_ON)
+
+
+# this sprays out the UDP datagrams
+def udp_sender(subnet, magic_message):
+    time.sleep(5)
+    sender = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    for ip in IPNetwork(subnet):
+        try:
+            sender.sendto(magic_message, ("%s" % ip, 65212))
+        except:
+            pass
+
+# start sending packets
+t = threading.Thread(target=udp_sender, args=(subnet, magic_message))
+t.start()
 
 try:
     while True:
@@ -98,6 +124,12 @@ try:
             icmp_header = ICMP(buff)
 
             print "ICMP -> Type: %d Code: %d" % (icmp_header.type, icmp_header.code)
+            # now check for the TYPE 3 and CODE
+            if icmp_header.code == 3 and icmp_header.type == 3:
+
+                # make sure it has our magic message
+                if raw_buffer[len(raw_buffer) - len(magic_message):] == magic_message:
+                    print "Host Up: %s" % ip_header.src_address
 
 # handle CTRL-C
 except KeyboardInterrupt:

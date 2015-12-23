@@ -1,4 +1,5 @@
 import socket
+# pip paramiko
 import paramiko
 import threading
 import sys
